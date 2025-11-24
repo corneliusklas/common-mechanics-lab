@@ -1,0 +1,26 @@
+"""Available formats for Stereo USB Camera
+1 camera:
+{'index': 0, 'media_type_str': 'MJPG', 'width': 1280, 'height': 720, 'min_framerate': 30.00003000003, 'max_framerate': 5.0}
+{'index': 2, 'media_type_str': 'MJPG', 'width': 640, 'height': 480, 'min_framerate': 30.00003000003, 'max_framerate': 5.0}
+{'index': 4, 'media_type_str': 'MJPG', 'width': 640, 'height': 360, 'min_framerate': 30.00003000003, 'max_framerate': 5.0}
+{'index': 6, 'media_type_str': 'MJPG', 'width': 1280, 'height': 712, 'min_framerate': 30.00003000003, 'max_framerate': 5.0}
+{'index': 8, 'media_type_str': 'MJPG', 'width': 640, 'height': 472, 'min_framerate': 30.00003000003, 'max_framerate': 5.0}
+{'index': 10, 'media_type_str': 'MJPG', 'width': 640, 'height': 352, 'min_framerate': 30.00003000003, 'max_framerate': 5.0}
+2 cameras:
+{'index': 12, 'media_type_str': 'MJPG', 'width': 2560, 'height': 720, 'min_framerate': 30.00003000003, 'max_framerate': 5.0}
+{'index': 14, 'media_type_str': 'MJPG', 'width': 1280, 'height': 480, 'min_framerate': 30.00003000003, 'max_framerate': 5.0}
+{'index': 16, 'media_type_str': 'MJPG', 'width': 1280, 'height': 360, 'min_framerate': 30.00003000003, 'max_framerate': 5.0}
+1 camera:
+{'index': 18, 'media_type_str': 'YUY2', 'width': 1280, 'height': 720, 'min_framerate': 10.0, 'max_framerate': 5.0}
+{'index': 20, 'media_type_str': 'YUY2', 'width': 640, 'height': 480, 'min_framerate': 30.00003000003, 'max_framerate': 5.0}
+{'index': 22, 'media_type_str': 'YUY2', 'width': 640, 'height': 360, 'min_framerate': 30.00003000003, 'max_framerate': 5.0}
+{'index': 24, 'media_type_str': 'YUY2', 'width': 1280, 'height': 712, 'min_framerate': 10.0, 'max_framerate': 5.0}
+{'index': 26, 'media_type_str': 'YUY2', 'width': 640, 'height': 472, 'min_framerate': 30.00003000003, 'max_framerate': 5.0}
+{'index': 28, 'media_type_str': 'YUY2', 'width': 640, 'height': 352, 'min_framerate': 30.00003000003, 'max_framerate': 5.0}
+2 cameras, slow:
+{'index': 30, 'media_type_str': 'YUY2', 'width': 2560, 'height': 720, 'min_framerate': 5.0, 'max_framerate': 5.0}
+2 cameras:
+{'index': 32, 'media_type_str': 'YUY2', 'width': 1280, 'height': 480, 'min_framerate': 15.000015000015, 'max_framerate': 5.0}
+{'index': 34, 'media_type_str': 'YUY2', 'width': 1280, 'height': 360, 'min_framerate': 25.0, 'max_framerate': 5.0}
+
+"""
