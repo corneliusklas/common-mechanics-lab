@@ -35,19 +35,19 @@ session_state: Dict[str, Any] = {"llm_count": 0, "last_llm_prompt": None, "last_
 
 # --- TOOL REGISTRY (Dynamisch) ---
 REGISTERED_TOOL_FUNCTIONS: Dict[str, Any] = {} # Map: "name" -> func
-LOADED_TOOL_MODULES: List[Any] = []        # Liste der geladenen Module (für State-Zugriffe)
-TOOL_SCHEMAS: List[Dict[str, Any]] = []    # Nur zur Initialisierung, wird jetzt dynamisch abgerufen
+LOADED_TOOL_MODULES: List[Any] = []       # Liste der geladenen Module (für State-Zugriffe)
+TOOL_SCHEMAS: List[Dict[str, Any]] = []    # Liste der LLM Function Schemas (statische Schemas)
 
 def _load_tools_from_folder(folder: str = "tools"):
     """
     Scannt den Ordner, importiert alle .py Dateien und registriert 
-    deren TOOL_FUNCTIONS und speichert die Module.
+    deren TOOL_FUNCTIONS und Schemas.
     """
     global REGISTERED_TOOL_FUNCTIONS, LOADED_TOOL_MODULES, TOOL_SCHEMAS
     
     REGISTERED_TOOL_FUNCTIONS = {}
     LOADED_TOOL_MODULES = []
-    TOOL_SCHEMAS = [] # Wird zurückgesetzt, aber nicht mehr in dieser Funktion gefüllt
+    TOOL_SCHEMAS = []
     
     if not os.path.exists(folder):
         print(f"⚠️ Tool folder '{folder}' not found. No tools registered.")
@@ -74,32 +74,21 @@ def _load_tools_from_folder(folder: str = "tools"):
                     
                     # Funktionen und Schemas registrieren
                     if hasattr(module, "TOOL_FUNCTIONS"):
+                        # Die Funktionen sollten jetzt die gesamte Struktur (Funktion + Schema) enthalten
                         REGISTERED_TOOL_FUNCTIONS.update(module.TOOL_FUNCTIONS)
                         LOADED_TOOL_MODULES.append(module)
                         print(f"✅ Loaded tool module: {module_name} with {len(module.TOOL_FUNCTIONS)} functions.")
                         
+                        if hasattr(module, "get_tool_schemas"):
+                            # Hinzufügen der Schemas (können dynamisch sein)
+                            TOOL_SCHEMAS.extend(module.get_tool_schemas())
+                            
             except Exception as e:
                 print(f"❌ Error loading tool module {module_name}: {e}")
                 
     # Pfad wieder entfernen
     if folder in sys.path:
         sys.path.remove(folder)
-
-def _get_current_tool_schemas() -> List[Dict[str, Any]]:
-    """
-    Kombiniert und gibt die aktuellen Tool-Schemas von allen geladenen Modulen zurück.
-    Dies ermöglicht es dynamischen Tools (wie Emotionen), ihr Schema (z.B. erlaubte Werte)
-    vor jedem LLM-Aufruf aktuell zu halten.
-    """
-    schemas = []
-    for mod in LOADED_TOOL_MODULES:
-        if hasattr(mod, "get_tool_schemas"):
-            try:
-                schemas.extend(mod.get_tool_schemas())
-            except Exception as e:
-                print(f"❌ Error getting tool schemas from module {mod.__name__}: {e}")
-    return schemas
-
 
 # --- EMOTION STATE WRAPPER (Für die API-Endpunkte in server.py) ---
 
@@ -117,7 +106,6 @@ def set_allowed_emotions(emotion_list: List[str]):
         try:
             res = mod.set_allowed_emotions(emotion_list)
             print(f"Allowed emotions updated via module: {mod.get_allowed_emotions()}")
-            # WICHTIG: Das dynamische Schema wird beim nächsten LLM-Aufruf durch _get_current_tool_schemas() erfasst.
             return res
         except Exception as e:
             print(f"❌ Error in set_allowed_emotions: {e}")
@@ -198,10 +186,6 @@ def generate_response(prompt: str) -> Tuple[str, List[str]]:
     with lock:
         if prompt == session_state["last_llm_prompt"]: 
             return session_state.get("last_response", "Bitte stelle eine neue Frage."), []
-    
-    # Holen Sie die aktuellen Tool-Schemas vor jedem LLM-Request,
-    # um dynamische Änderungen (z.B. erlaubte Emotionen) zu berücksichtigen.
-    current_tools_schemas = _get_current_tool_schemas()
 
     # Fügen Sie den neuen Benutzerprompt zur History hinzu
     new_user_message = {"role": "user", "content": prompt}
@@ -226,9 +210,8 @@ def generate_response(prompt: str) -> Tuple[str, List[str]]:
                 response = client.chat.completions.create(
                     model="gpt-4o", 
                     messages=current_messages,
-                    # Verwende die dynamisch abgerufenen Schemas
-                    tools=current_tools_schemas if current_tools_schemas else None,
-                    tool_choice="auto" if current_tools_schemas else None,
+                    tools=TOOL_SCHEMAS if TOOL_SCHEMAS else None,
+                    tool_choice="auto" if TOOL_SCHEMAS else None,
                 )
                 session_state["llm_count"] += 1
                 
@@ -262,6 +245,11 @@ def generate_response(prompt: str) -> Tuple[str, List[str]]:
                         executed_tool_calls.append(f"{fname}({fargs_str})")
                         
                         # Tool-Funktion ausführen
+                        # HIER WIRD DIE FUNKTION AUS DEM TOOL-REGISTER GEHOLT
+                        # WICHTIG: Geht davon aus, dass REGISTERED_TOOL_FUNCTIONS[fname]
+                        # die Funktion direkt ist (wie in der ersten Version) ODER ein Dict
+                        # mit dem Schlüssel 'function'. Wir nehmen an, es ist direkt die Funktion 
+                        # oder wir greifen auf 'function' zu, wenn es ein Dict ist.
                         func_entry = REGISTERED_TOOL_FUNCTIONS[fname]
                         func = func_entry['function'] if isinstance(func_entry, dict) and 'function' in func_entry else func_entry
                         
@@ -374,11 +362,10 @@ if __name__ == "__main__":
     
     # Test 1: Laden der Tools
     print(f"\nRegistered Tools: {list(REGISTERED_TOOL_FUNCTIONS.keys())}")
-    print(f"Loaded Schemas (Initial): {len(_get_current_tool_schemas())}")
+    print(f"Loaded Schemas: {len(TOOL_SCHEMAS)}")
 
     # Test 2: Emotionen (set/get)
     set_allowed_emotions(["happy", "sad"])
     print(f"Allowed Emotions: {get_allowed_emotions()}")
-    print(f"Loaded Schemas (After update): {len(_get_current_tool_schemas())}")
     
     print("\nLLM Service ist initialisiert und bereit.")

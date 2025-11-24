@@ -1,5 +1,5 @@
 # Globaler State für dieses Modul
-DEFAULT_EMOTIONS = ["happy", "sad", "angry", "neutral"]
+DEFAULT_EMOTIONS = ["happy", "sad", "neutral"]
 current_allowed_emotions = DEFAULT_EMOTIONS.copy()
 last_recognized_emotion = "neutral"
 
