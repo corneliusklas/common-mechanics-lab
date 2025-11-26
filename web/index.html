@@ -16,6 +16,7 @@
             padding: 50px;
         }
         h1 { color: #007acc; }
+        /* Style für alle A-Tags */
         a {
             display: block;
             margin: 15px 0;
@@ -30,7 +31,12 @@
             width: 80%; /* Verbessert die Lesbarkeit auf mobilen Geräten */
             max-width: 400px;
         }
+        /* Spezieller Stil für Projekt-Links */
+        .project-link {
+            background-color: #28a745; /* Grüne Farbe für Projekt-Links */
+        }
         a:hover { background-color: #005f99; }
+        .project-link:hover { background-color: #1e7e34; }
         small { margin-top: 40px; color: #666; }
     </style>
 </head>
@@ -38,39 +44,64 @@
     <h1>Common Mechanics Lab</h1>
     <p>Wähle eine Umgebung:</p>
 
+    <!-- Link 1: Startet den Editor mit vordefinierten Extensions -->
     <a href="#" id="turbo-link" target="_blank">TurboWarp Editor mit Extensions starten</a>
+    
+    <!-- NEUER Link 2: Startet den Editor UND lädt das spezifische Projekt "Kopf.sb3" -->
+    <a href="#" id="kopf-link" class="project-link" target="_blank">Projekt "Kopf.sb3" in TurboWarp starten</a>
+
     <a href="/turbowrap/extensions/index.html" target="_blank">Extensions durchsuchen</a>
     <a href="/devices" target="_blank">Netzwerkgeräte anzeigen</a>
 
     <small>Hosted on Raspberry Pi – Common Mechanics Lab</small>
     
 <script>
-    // Host-Adresse dynamisch abrufen (z.B. 192.168.4.1 oder raspberrypi, ohne Port)
+    // Host-Adresse dynamisch abrufen
     const host = window.location.hostname;
     const protocol = window.location.protocol; 
     
-    // Die Basis-URL des Hosts (ohne Port, da Port 80 verwendet wird, oder mit aktuellem Port)
+    // Basis-URL des Hosts
     const baseHostUrl = protocol + '//' + host + (window.location.port ? ':' + window.location.port : '');
     
     // Konstante Pfade definieren
     const editorPath = '/turbowrap/build-tw/editor.html';
     const extensionPath1 = '/turbowrap/extensions/esp32control.js';
-    const extensionPath2 = '/turbowrap/extensions/piaiextension.js'; // Nutze die piaiextension.js als zweite Extension
+    const extensionPath2 = '/turbowrap/extensions/piaiextension.js';
     
-    // 1. Die vollständigen Extension-URLs erstellen (MUSS ABSOLUT SEIN!)
+    // Relativer Pfad zum Scratch-Projekt im Web-Verzeichnis
+    const projectPath = '/turbowrap/examples/Kopf.sb3';
+    
+    // 1. URL für den Editor mit Extensions (Basis-URL)
+    
+    // Die vollständigen Extension-URLs erstellen (MUSS ABSOLUT SEIN!)
     const absoluteExtensionUrl1 = baseHostUrl + extensionPath1;
     const absoluteExtensionUrl2 = baseHostUrl + extensionPath2;
     
-    // 2. Die finale URL zusammenbauen (Basis-URL + Editor-Pfad + Extension-Parameter)
-    // Wichtig: ? für den ersten Parameter, & für den zweiten und alle folgenden.
-    const finalUrl = baseHostUrl + editorPath + 
-                     '?extension=' + encodeURIComponent(absoluteExtensionUrl1) +
-                     '&extension=' + encodeURIComponent(absoluteExtensionUrl2);
+    // Die finale URL für den Editor mit geladenen Extensions
+    const editorWithExtensionsUrl = baseHostUrl + editorPath + 
+                                   '?extension=' + encodeURIComponent(absoluteExtensionUrl1) +
+                                   '&extension=' + encodeURIComponent(absoluteExtensionUrl2);
     
-    // 3. Den Link im Dokument finden und den href-Wert setzen
-    const linkElement = document.getElementById('turbo-link');
-    if (linkElement) {
-        linkElement.href = finalUrl;
+    // 2. URL für das Projekt "Kopf.sb3"
+    
+    // Die vollständige Projekt-URL erstellen
+    const absoluteProjectUrl = baseHostUrl + projectPath;
+
+    // Die finale URL für den Editor, der das Projekt lädt und Extensions hat
+    const projectLoadUrl = editorWithExtensionsUrl + 
+                           '&project_url=' + encodeURIComponent(absoluteProjectUrl);
+
+
+    // 3. Links im Dokument finden und die href-Werte setzen
+    const turboLinkElement = document.getElementById('turbo-link');
+    if (turboLinkElement) {
+        turboLinkElement.href = editorWithExtensionsUrl;
+    }
+    
+    // Setzen des NEUEN Links
+    const kopfLinkElement = document.getElementById('kopf-link');
+    if (kopfLinkElement) {
+        kopfLinkElement.href = projectLoadUrl;
     }
 </script>
 

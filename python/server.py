@@ -72,6 +72,18 @@ def turbowrap_editor(path):
 def turbowrap_extensions(path):
     return send_from_directory(os.path.join(app.static_folder, 'turbowrap/extensions'), path)
 
+@app.route('/turbowrap/examples/<path:path>')
+def turbowrap_examples(path):
+    """
+    Bedient statische Scratch-Projektdateien (.sb3) aus dem 'turbowrap/examples' Ordner.
+    """
+    # Überprüfen auf Pfad-Traversal
+    if '..' in path:
+        abort(404)
+    # Setze den relativen Pfad zum Unterordner 'turbowrap/examples'
+    return send_from_directory(os.path.join(app.static_folder, 'turbowrap/examples'), path)
+  
+
 # ---------- Hilfsfunktionen (für /devices Route) ----------
 
 def get_mdns_devices(timeout="1s"):
