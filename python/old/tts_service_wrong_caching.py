@@ -34,7 +34,7 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 CACHE_DIR = os.path.expanduser("~/.local/share/tts_cache")
 MAX_OPENAI_REQUESTS = 100
 MAX_CACHE_FILES = 200 # LRU: löscht älteste Dateien
-# MODULATED_OUTPUT_WAV wurde entfernt, da der Pfad dynamisch sein muss
+MODULATED_OUTPUT_WAV = os.path.join(CACHE_DIR, "modulated_output.wav") # Zentraler Pfad für die modulierte Datei
 
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
@@ -69,14 +69,10 @@ def prune_cache():
     """LRU: löscht alte Dateien, wenn MAX_CACHE_FILES überschritten"""
     if len(tts_cache_index) <= MAX_CACHE_FILES:
         return
-    # Sortiere nach Timestamp (älteste zuerst)
     sorted_items = sorted(tts_cache_index.items(), key=lambda x: x[1]["timestamp"])
-    
-    # Lösche die ältesten Dateien, bis das Limit erreicht ist
     for key, info in sorted_items[: len(tts_cache_index) - MAX_CACHE_FILES]:
         try:
-            if os.path.exists(info["path"]):
-                os.remove(info["path"])
+            os.remove(info["path"])
         except FileNotFoundError:
             pass
         del tts_cache_index[key]
@@ -93,8 +89,6 @@ def play_audio_ffplay(file_path):
     is_talking_state = True
     
     try:
-        # Füge time.sleep(0.1) HIER NICHT hinzu, da ffplay das Blockieren
-        # und die Synchronisierung selbst übernimmt.
         subprocess.run(
             ['ffplay', '-nodisp', '-autoexit', '-hide_banner', '-loglevel', 'error', file_path],
             check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
@@ -142,19 +136,10 @@ def say_with_gtts(text, lang="de"):
         print("Empty text, skipping TTS.")
         return False
         
-    hash_val = hash_text(text)
+    hash_val = hashlib.sha256(text.encode('utf-8')).hexdigest()
     temp_mp3_path = os.path.join(CACHE_DIR, f"gtts_{hash_val}.mp3")
     temp_wav_path = os.path.join(CACHE_DIR, f"gtts_{hash_val}.wav")
     
-    # NEU: Finaler Pfad, um Caching zu erlauben
-    final_modulated_path = os.path.join(CACHE_DIR, f"mod_{hash_val}.wav")
-    
-    # Caching-Check für gTTS (Obwohl gTTS-Caching nicht empfohlen wird, 
-    # da es oft billiger ist als OpenAI)
-    if os.path.exists(final_modulated_path):
-        print("✅ Playing cached gTTS audio.")
-        return play_audio_ffplay(final_modulated_path)
-
     try:
         print("⚙️ Generating TTS with gTTS...")
         tts = gTTS(text=text, lang=lang, slow=False)
@@ -163,17 +148,17 @@ def say_with_gtts(text, lang="de"):
         if not convert_mp3_to_wav_ffmpeg(temp_mp3_path, temp_wav_path):
              return False
              
-        # NEU: Modulation auf gTTS-Audio anwenden (speichert in final_modulated_path)
-        apply_ring_modulation(temp_wav_path, final_modulated_path)
+        # NEU: Modulation auf gTTS-Audio anwenden
+        apply_ring_modulation(temp_wav_path, MODULATED_OUTPUT_WAV)
         
         print("▶️ Playing modulated gTTS audio...")
-        return play_audio_ffplay(final_modulated_path)
+        return play_audio_ffplay(MODULATED_OUTPUT_WAV)
 
     except Exception as e:
         print(f"❌ gTTS error: {e}.")
         return False
     finally:
-        # Aufräumen der temporären MP3/WAV-Dateien, die zur Generierung dienten
+        # Aufräumen der temporären Dateien
         if os.path.exists(temp_mp3_path): os.remove(temp_mp3_path)
         if os.path.exists(temp_wav_path): os.remove(temp_wav_path)
 
@@ -186,63 +171,50 @@ def say_with_openai(text, voice="fable", model="tts-1"):
 
     text_hash = hash_text(text)
     
-    # 1. Definiere den finalen Pfad basierend auf dem Hash des Textes
-    final_modulated_path = os.path.join(CACHE_DIR, f"mod_{text_hash}.wav")
-
-    # 2. Check cache
+    # 1. Check cache
     if text_hash in tts_cache_index:
-        # ACHTUNG: Der Pfad im Index MUSS jetzt der final_modulated_path sein
-        # Wir aktualisieren den Timestamp nur, wenn der Pfad existiert (Fehlerprüfung)
-        if os.path.exists(final_modulated_path):
-            tts_cache_index[text_hash]["timestamp"] = time.time()
-            save_index()
-            print("✅ Playing cached OpenAI audio.")
-            return play_audio_ffplay(final_modulated_path)
-        else:
-             # Cache-Eintrag existiert, aber Datei fehlt (z.B. nach manueller Löschung)
-             del tts_cache_index[text_hash]
-             save_index()
-             print("⚠️ Cache index mismatch, regenerating.")
+        wav_path = tts_cache_index[text_hash]["path"]
+        tts_cache_index[text_hash]["timestamp"] = time.time()
+        save_index()
+        print("✅ Playing cached audio.")
+        return play_audio_ffplay(wav_path)
 
-
-    # 3. Check if OpenAI limit reached
+    # 2. Check if OpenAI limit reached
     if openai_request_count >= MAX_OPENAI_REQUESTS:
         print("⚠️ OpenAI request limit reached, falling back to espeak.")
         return speak_with_espeak(text)[0] 
 
-    # 4. Generate TTS via OpenAI
+    # 3. Generate TTS via OpenAI
     mp3_path = os.path.join(CACHE_DIR, f"{text_hash}.mp3")
-    temp_wav_path = os.path.join(CACHE_DIR, f"temp_{text_hash}.wav") # Temp WAV, da es bald moduliert wird
-    
+    wav_path = os.path.join(CACHE_DIR, f"{text_hash}.wav")
     try:
         print("⚙️ Generating TTS with OpenAI...")
         response = client.audio.speech.create(model=model, voice=voice, input=text)
         
         with open(mp3_path, "wb") as f:
             f.write(response.content)
-            
-        if not convert_mp3_to_wav_ffmpeg(mp3_path, temp_wav_path):
+        if not convert_mp3_to_wav_ffmpeg(mp3_path, wav_path):
             return False
 
-        # Apply modulation to the temporary WAV file, speichern im finalen Pfad
-        apply_ring_modulation(temp_wav_path, final_modulated_path)
+        # Apply modulation to the temporary WAV file
+        apply_ring_modulation(wav_path, MODULATED_OUTPUT_WAV)
         openai_request_count += 1
 
-        # Update cache (speichert den PFAD ZUR EINZIGARTIGEN DATEI)
-        tts_cache_index[text_hash] = {"path": final_modulated_path, "timestamp": time.time()}
+        # Update cache (speichert Pfad zur modulierten Datei)
+        tts_cache_index[text_hash] = {"path": MODULATED_OUTPUT_WAV, "timestamp": time.time()}
         prune_cache()
         save_index()
         
         print("▶️ Playing modulated audio...")
-        return play_audio_ffplay(final_modulated_path)
+        return play_audio_ffplay(MODULATED_OUTPUT_WAV)
     except Exception as e:
         print(f"❌ OpenAI TTS error: {e}. Falling back to gTTS.")
         # Fallback auf gTTS
         return say_with_gtts(text, lang='de')
     finally:
-        # Clean temp MP3/WAV files
+        # Clean temp MP3/WAV
         if os.path.exists(mp3_path): os.remove(mp3_path)
-        if os.path.exists(temp_wav_path): os.remove(temp_wav_path)
+        if os.path.exists(wav_path): os.remove(wav_path)
 
 
 # --- Local Espeak (SPIELT DIREKT AB) ---
@@ -300,25 +272,17 @@ if __name__ == "__main__":
         
         # NEUE LÖSUNG: Cache-Eintrag für diesen Test-String löschen, um Konsistenz zu gewährleisten
         test_hash = hash_text(test_text_openai)
-        
-        # Lösche den Index-Eintrag
         if test_hash in tts_cache_index:
             del tts_cache_index[test_hash]
             save_index()
-            print("    -> Vorhandener Cache-Eintrag für Test-String wurde entfernt.")
+            print("   -> Vorhandener Cache-Eintrag für Test-String wurde entfernt.")
         
-        # Lösche die physische Datei, falls sie existiert
-        test_file_path = os.path.join(CACHE_DIR, f"mod_{test_hash}.wav")
-        if os.path.exists(test_file_path):
-            os.remove(test_file_path)
-            print("    -> Vorhandene Cache-Datei für Test-String wurde entfernt.")
-            
         # Jetzt sollte der erste Aufruf GENERIEREN (was die Datei anlegt)
-        print("    -> Erster Aufruf (generiert):")
+        print("   -> Erster Aufruf (generiert):")
         say_with_openai(test_text_openai, voice='fable')
         
         # Nun sollte der zweite Aufruf den Cache finden und verwenden
-        print("    -> Zweiter Aufruf (aus Cache):")
+        print("   -> Zweiter Aufruf (aus Cache):")
         say_with_openai(test_text_openai, voice='fable')
 
         # Test 2: gTTS und is_talking Statusprüfung (Polling-Methode)
@@ -336,14 +300,14 @@ if __name__ == "__main__":
 
         # Prüfung 1: Status während Wiedergabe
         status_during_playback = get_talking_status()
-        print(f"    Status während Wiedergabe: {status_during_playback}")
+        print(f"   Status während Wiedergabe: {status_during_playback}")
         assert status_during_playback == True, "❌ is_talking wurde nicht auf True gesetzt."
 
         t.join() 
 
         # Prüfung 2: Status nach Wiedergabe
         status_after_playback = get_talking_status()
-        print(f"    Status nach Wiedergabe: {status_after_playback}")
+        print(f"   Status nach Wiedergabe: {status_after_playback}")
         assert status_after_playback == False, "❌ is_talking wurde nicht auf False zurückgesetzt."
 
         print(f"✅ TTS/gTTS und is_talking Test abgeschlossen.")
@@ -367,21 +331,18 @@ if __name__ == "__main__":
 
     # Prüfung 1: Status während Wiedergabe
     status_during_espeak = get_talking_status()
-    print(f"    Status während Wiedergabe: {status_during_espeak}")
+    print(f"   Status während Wiedergabe: {status_during_espeak}")
     assert status_during_espeak == True, "❌ Espeak is_talking wurde nicht auf True gesetzt."
 
     t_espeak.join() 
 
     # Prüfung 2: Status nach Wiedergabe
     status_after_espeak = get_talking_status()
-    print(f"    Status nach Wiedergabe: {status_after_espeak}")
+    print(f"   Status nach Wiedergabe: {status_after_espeak}")
     assert status_after_espeak == False, "❌ Espeak is_talking wurde nicht auf False zurückgesetzt."
     print(f"✅ Espeak Test abgeschlossen.")
 
 
     # Aufräumen der temporären modulierten Datei (falls vorhanden)
-    # Entferne die spezielle Testdatei
-    if 'test_file_path' in locals() and os.path.exists(test_file_path):
-        os.remove(test_file_path)
-    
-    print("\n--- Alle Tests abgeschlossen ---")
+    if os.path.exists(MODULATED_OUTPUT_WAV):
+        os.remove(MODULATED_OUTPUT_WAV)
